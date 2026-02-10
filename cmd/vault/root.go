@@ -7,6 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var Version = "dev"
+
 var rootCmd = &cobra.Command{
 	Use:   "vault",
 	Short: "Code vault - A pastebin for serious developers",

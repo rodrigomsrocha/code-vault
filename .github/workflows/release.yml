@@ -1,0 +1,184 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            goos: linux
+            goarch: amd64
+          - os: linux
+            arch: arm64
+            goos: linux
+            goarch: arm64
+          - os: darwin
+            arch: amd64
+            goos: darwin
+            goarch: amd64
+          - os: darwin
+            arch: arm64
+            goos: darwin
+            goarch: arm64
+          - os: windows
+            arch: amd64
+            goos: windows
+            goarch: amd64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          OUTPUT_NAME="vault-${VERSION}-${{ matrix.os }}-${{ matrix.arch }}"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            OUTPUT_NAME="${OUTPUT_NAME}.exe"
+          fi
+
+          go build \
+            -ldflags="-X 'main.Version=${VERSION}' -s -w" \
+            -o "${OUTPUT_NAME}" \
+            ./cmd/vault
+
+          echo "BINARY_NAME=${OUTPUT_NAME}" >> $GITHUB_ENV
+
+      - name: Generate checksum
+        run: |
+          sha256sum "${BINARY_NAME}" > "${BINARY_NAME}.sha256"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vault-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            vault-*
+            *.sha256
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums file
+        run: |
+          cd dist
+          sha256sum vault-* > checksums.txt
+          cd ..
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          cat > release_notes.md << 'EOF'
+          # Code Vault ${{ steps.version.outputs.VERSION }} 🎉
+
+          ## 📦 Installation
+
+          ### Linux (amd64)
+          ```bash
+                  curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/vault-${{ steps.version.outputs.VERSION }}-linux-amd64 -o vault
+                  chmod +x vault
+                  sudo mv vault /usr/local/bin/
+          ```
+
+                  ### macOS (Apple Silicon)
+          ```bash
+                  curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/vault-${{ steps.version.outputs.VERSION }}-darwin-arm64 -o vault
+                  chmod +x vault
+                  sudo mv vault /usr/local/bin/
+          ```
+
+                  ### macOS (Intel)
+          ```bash
+                  curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/vault-${{ steps.version.outputs.VERSION }}-darwin-amd64 -o vault
+                  chmod +x vault
+                  sudo mv vault /usr/local/bin/
+          ```
+
+                  ### Windows
+                  Download `vault-${{ steps.version.outputs.VERSION }}-windows-amd64.exe` and add to PATH.
+
+                  ## ✅ Verify Installation
+          ```bash
+                  vault --version
+          ```
+
+                  ## 🚀 Quick Start
+          ```bash
+                  # Start infrastructure
+                  docker-compose up -d
+
+                  # Initialize
+                  vault init
+
+                  # Create snippet
+                  vault create script.go --title "Hello" --tags go
+          ```
+
+          ## 📝 What's New
+
+          See full changelog: https://github.com/${{ github.repository }}/compare/v0.0.0...${{ steps.version.outputs.VERSION }}
+
+          ## 🐛 Bug Reports
+
+          Found an issue? https://github.com/${{ github.repository }}/issues
+
+          ---
+
+          **Checksums**: See `checksums.txt` for SHA256 verification
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Code Vault ${{ steps.version.outputs.VERSION }}
+          body_path: release_notes.md
+          files: |
+            dist/vault-*
+            dist/checksums.txt
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
