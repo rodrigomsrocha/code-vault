@@ -1,0 +1,43 @@
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config (local overrides)
+config.local.yaml
+
+# Data directories
+data/
+*.db
+*.sqlite
+
+# Logs
+*.log
+worker.log
+
+# Docker volumes
+postgres_data/
+seaweed_*/

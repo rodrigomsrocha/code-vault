@@ -1,0 +1,58 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: code-vault-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vault_user
+      POSTGRES_PASSWORD: vault_password
+      POSTGRES_DB: code_vault
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vault_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  master:
+    image: chrislusf/seaweedfs
+    ports:
+      - 9333:9333
+      - 19333:19333
+    command: "master -ip=master -ip.bind=0.0.0.0"
+  volume:
+    image: chrislusf/seaweedfs
+    ports:
+      - 8080:8080
+      - 18080:18080
+    command: 'volume -ip=volume -master="master:9333" -ip.bind=0.0.0.0 -port=8080'
+    depends_on:
+      - master
+  filer:
+    image: chrislusf/seaweedfs
+    ports:
+      - 8888:8888
+      - 18888:18888
+    command: 'filer -ip=filer -master="master:9333" -ip.bind=0.0.0.0'
+    tty: true
+    stdin_open: true
+    depends_on:
+      - master
+      - volume
+  s3:
+    image: chrislusf/seaweedfs
+    ports:
+      - 8333:8333
+    command: 's3 -filer="filer:8888" -ip.bind=0.0.0.0'
+    depends_on:
+      - master
+      - volume
+      - filer
+
+volumes:
+  postgres_data:
